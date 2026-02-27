@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Garden Monitor</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a0a;
+            color: #e0e0e0;
+            font-family: 'Courier New', monospace;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        header h1 {
+            font-size: 1.4rem;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            color: #4caf50;
+            margin-bottom: 8px;
+        }
+
+        header p {
+            font-size: 0.75rem;
+            color: #555;
+            letter-spacing: 0.15em;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 20px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: #111;
+            border: 1px solid #222;
+            border-radius: 4px;
+            padding: 30px;
+        }
+
+        .card .label {
+            font-size: 0.65rem;
+            letter-spacing: 0.25em;
+            text-transform: uppercase;
+            color: #555;
+            margin-bottom: 12px;
+        }
+
+        .card .value {
+            font-size: 2.8rem;
+            font-weight: bold;
+            color: #4caf50;
+            line-height: 1;
+        }
+
+        .card .unit {
+            font-size: 1rem;
+            color: #555;
+            margin-left: 4px;
+        }
+
+        .card .updated {
+            font-size: 0.65rem;
+            color: #333;
+            margin-top: 12px;
+            letter-spacing: 0.1em;
+        }
+
+        .status {
+            text-align: center;
+            margin-top: 40px;
+            font-size: 0.65rem;
+            letter-spacing: 0.2em;
+            color: #333;
+        }
+
+        .status.live { color: #4caf50; }
+        .status.error { color: #c62828; }
+
+        .bar-bg {
+            background: #1a1a1a;
+            border-radius: 2px;
+            height: 4px;
+            margin-top: 16px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            background: #4caf50;
+            border-radius: 2px;
+            transition: width 1s ease;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Garden Monitor</h1>
+    <p>Pensacola, FL &mdash; Live Sensor Feed</p>
+</header>
+
+<div class="grid">
+    <div class="card">
+        <div class="label">Temperature</div>
+        <div class="value" id="temp">--<span class="unit">&deg;F</span></div>
+        <div class="updated" id="temp-time">waiting for data...</div>
+    </div>
+
+    <div class="card">
+        <div class="label">Humidity</div>
+        <div class="value" id="humidity">--<span class="unit">%</span></div>
+        <div class="bar-bg"><div class="bar-fill" id="humidity-bar" style="width:0%"></div></div>
+        <div class="updated" id="humidity-time">waiting for data...</div>
+    </div>
+
+    <div class="card">
+        <div class="label">Soil Moisture</div>
+        <div class="value" id="soil">--<span class="unit">raw</span></div>
+        <div class="bar-bg"><div class="bar-fill" id="soil-bar" style="width:0%"></div></div>
+        <div class="updated" id="soil-time">waiting for data...</div>
+    </div>
+</div>
+
+<div class="status" id="status">CONNECTING...</div>
+
+<script>
+    const AIO_USERNAME = 'lmgisme';
+    const BASE_URL     = `https://io.adafruit.com/api/v2/${AIO_USERNAME}/feeds`;
+
+    function timeAgo(dateStr) {
+        const seconds = Math.floor((new Date() - new Date(dateStr)) / 1000);
+        if (seconds < 60) return `${seconds}s ago`;
+        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+        return `${Math.floor(seconds / 3600)}h ago`;
+    }
+
+    async function fetchFeed(feedKey) {
+        const res = await fetch(`${BASE_URL}/${feedKey}/data/last`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+    }
+
+    async function update() {
+        try {
+            const [temp, humidity, soil] = await Promise.all([
+                fetchFeed('temperature'),
+                fetchFeed('humidity'),
+                fetchFeed('soil-moisture')
+            ]);
+
+            document.getElementById('temp').innerHTML =
+                `${parseFloat(temp.value).toFixed(1)}<span class="unit">&deg;F</span>`;
+            document.getElementById('temp-time').textContent = timeAgo(temp.created_at);
+
+            const hVal = parseFloat(humidity.value).toFixed(1);
+            document.getElementById('humidity').innerHTML =
+                `${hVal}<span class="unit">%</span>`;
+            document.getElementById('humidity-bar').style.width = `${hVal}%`;
+            document.getElementById('humidity-time').textContent = timeAgo(humidity.created_at);
+
+            const sVal = parseInt(soil.value);
+            const soilPct = Math.max(0, Math.min(100, Math.round((4095 - sVal) / 4095 * 100)));
+            document.getElementById('soil').innerHTML =
+                `${sVal}<span class="unit">raw</span>`;
+            document.getElementById('soil-bar').style.width = `${soilPct}%`;
+            document.getElementById('soil-time').textContent = timeAgo(soil.created_at);
+
+            document.getElementById('status').textContent = `LIVE — refreshes every 10s`;
+            document.getElementById('status').className = 'status live';
+
+        } catch (err) {
+            console.error(err);
+            document.getElementById('status').textContent = `ERROR: ${err.message}`;
+            document.getElementById('status').className = 'status error';
+        }
+    }
+
+    update();
+    setInterval(update, 10000);
+</script>
+
+</body>
+</html>
