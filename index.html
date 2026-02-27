@@ -136,8 +136,8 @@
 <div class="status" id="status">CONNECTING...</div>
 
 <script>
-    const AIO_USERNAME = 'lmgisme';
-    const BASE_URL     = `https://io.adafruit.com/api/v2/${AIO_USERNAME}/feeds`;
+    const SUPABASE_URL = 'https://ntmgyygbsdqumahniekx.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_CbdThUIEfiKJe_Cg745u-Q_Hf7iIJxl';
 
     function timeAgo(dateStr) {
         const seconds = Math.floor((new Date() - new Date(dateStr)) / 1000);
@@ -146,36 +146,41 @@
         return `${Math.floor(seconds / 3600)}h ago`;
     }
 
-    async function fetchFeed(feedKey) {
-        const res = await fetch(`${BASE_URL}/${feedKey}/data/last`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-    }
-
     async function update() {
         try {
-            const [temp, humidity, soil] = await Promise.all([
-                fetchFeed('temperature'),
-                fetchFeed('humidity'),
-                fetchFeed('soil-moisture')
-            ]);
+            const res = await fetch(
+                `${SUPABASE_URL}/rest/v1/sensor_readings?order=created_at.desc&limit=1`,
+                {
+                    headers: {
+                        'apikey': SUPABASE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_KEY}`
+                    }
+                }
+            );
+
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            if (!data.length) throw new Error('No data yet');
+
+            const row = data[0];
+            const t = timeAgo(row.created_at);
 
             document.getElementById('temp').innerHTML =
-                `${parseFloat(temp.value).toFixed(1)}<span class="unit">&deg;F</span>`;
-            document.getElementById('temp-time').textContent = timeAgo(temp.created_at);
+                `${parseFloat(row.temperature).toFixed(1)}<span class="unit">&deg;F</span>`;
+            document.getElementById('temp-time').textContent = t;
 
-            const hVal = parseFloat(humidity.value).toFixed(1);
+            const hVal = parseFloat(row.humidity).toFixed(1);
             document.getElementById('humidity').innerHTML =
                 `${hVal}<span class="unit">%</span>`;
             document.getElementById('humidity-bar').style.width = `${hVal}%`;
-            document.getElementById('humidity-time').textContent = timeAgo(humidity.created_at);
+            document.getElementById('humidity-time').textContent = t;
 
-            const sVal = parseInt(soil.value);
+            const sVal = parseInt(row.soil_moisture);
             const soilPct = Math.max(0, Math.min(100, Math.round((4095 - sVal) / 4095 * 100)));
             document.getElementById('soil').innerHTML =
                 `${sVal}<span class="unit">raw</span>`;
             document.getElementById('soil-bar').style.width = `${soilPct}%`;
-            document.getElementById('soil-time').textContent = timeAgo(soil.created_at);
+            document.getElementById('soil-time').textContent = t;
 
             document.getElementById('status').textContent = `LIVE — refreshes every 10s`;
             document.getElementById('status').className = 'status live';
