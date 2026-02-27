@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Garden Monitor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -17,7 +18,7 @@
 
         header {
             text-align: center;
-            margin-bottom: 50px;
+            margin-bottom: 40px;
         }
 
         header h1 {
@@ -34,49 +35,81 @@
             letter-spacing: 0.15em;
         }
 
-        .grid {
+        /* ── Latest reading strip ── */
+        .latest {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
             max-width: 900px;
-            margin: 0 auto;
+            margin: 0 auto 40px;
         }
 
-        .card {
+        .latest-card {
             background: #111;
             border: 1px solid #222;
+            border-left: 3px solid #4caf50;
             border-radius: 4px;
-            padding: 30px;
+            padding: 20px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
         }
 
-        .card .label {
-            font-size: 0.65rem;
+        .latest-card .label {
+            font-size: 0.6rem;
             letter-spacing: 0.25em;
             text-transform: uppercase;
             color: #555;
-            margin-bottom: 12px;
         }
 
-        .card .value {
-            font-size: 2.8rem;
+        .latest-card .value {
+            font-size: 2.4rem;
             font-weight: bold;
             color: #4caf50;
             line-height: 1;
         }
 
-        .card .unit {
-            font-size: 1rem;
+        .latest-card .unit {
+            font-size: 0.9rem;
             color: #555;
-            margin-left: 4px;
+            margin-left: 3px;
         }
 
-        .card .updated {
-            font-size: 0.65rem;
+        .latest-card .ts {
+            font-size: 0.6rem;
             color: #333;
-            margin-top: 12px;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.08em;
         }
 
+        /* ── Charts ── */
+        .charts {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .chart-card {
+            background: #111;
+            border: 1px solid #222;
+            border-radius: 4px;
+            padding: 24px;
+        }
+
+        .chart-card .chart-title {
+            font-size: 0.65rem;
+            letter-spacing: 0.25em;
+            text-transform: uppercase;
+            color: #555;
+            margin-bottom: 16px;
+        }
+
+        .chart-card canvas {
+            width: 100% !important;
+        }
+
+        /* ── Footer status ── */
         .status {
             text-align: center;
             margin-top: 40px;
@@ -85,23 +118,8 @@
             color: #333;
         }
 
-        .status.live { color: #4caf50; }
+        .status.live  { color: #4caf50; }
         .status.error { color: #c62828; }
-
-        .bar-bg {
-            background: #1a1a1a;
-            border-radius: 2px;
-            height: 4px;
-            margin-top: 16px;
-            overflow: hidden;
-        }
-
-        .bar-fill {
-            height: 100%;
-            background: #4caf50;
-            border-radius: 2px;
-            transition: width 1s ease;
-        }
     </style>
 </head>
 <body>
@@ -111,25 +129,38 @@
     <p>Pensacola, FL &mdash; Live Sensor Feed</p>
 </header>
 
-<div class="grid">
-    <div class="card">
+<!-- Latest reading -->
+<div class="latest">
+    <div class="latest-card">
         <div class="label">Temperature</div>
-        <div class="value" id="temp">--<span class="unit">&deg;F</span></div>
-        <div class="updated" id="temp-time">waiting for data...</div>
+        <div class="value" id="val-temp">--<span class="unit">&deg;F</span></div>
+        <div class="ts" id="ts-temp">waiting...</div>
     </div>
-
-    <div class="card">
+    <div class="latest-card">
         <div class="label">Humidity</div>
-        <div class="value" id="humidity">--<span class="unit">%</span></div>
-        <div class="bar-bg"><div class="bar-fill" id="humidity-bar" style="width:0%"></div></div>
-        <div class="updated" id="humidity-time">waiting for data...</div>
+        <div class="value" id="val-hum">--<span class="unit">%</span></div>
+        <div class="ts" id="ts-hum">waiting...</div>
     </div>
-
-    <div class="card">
+    <div class="latest-card">
         <div class="label">Soil Moisture</div>
-        <div class="value" id="soil">--<span class="unit">raw</span></div>
-        <div class="bar-bg"><div class="bar-fill" id="soil-bar" style="width:0%"></div></div>
-        <div class="updated" id="soil-time">waiting for data...</div>
+        <div class="value" id="val-soil">--<span class="unit">raw</span></div>
+        <div class="ts" id="ts-soil">waiting...</div>
+    </div>
+</div>
+
+<!-- Graphs -->
+<div class="charts">
+    <div class="chart-card">
+        <div class="chart-title">Temperature &mdash; last 60 readings</div>
+        <canvas id="chart-temp" height="120"></canvas>
+    </div>
+    <div class="chart-card">
+        <div class="chart-title">Humidity &mdash; last 60 readings</div>
+        <canvas id="chart-hum" height="120"></canvas>
+    </div>
+    <div class="chart-card">
+        <div class="chart-title">Soil Moisture &mdash; last 60 readings</div>
+        <canvas id="chart-soil" height="120"></canvas>
     </div>
 </div>
 
@@ -138,62 +169,121 @@
 <script>
     const SUPABASE_URL = 'https://ntmgyygbsdqumahniekx.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_CbdThUIEfiKJe_Cg745u-Q_Hf7iIJxl';
+    const REFRESH_MS   = 60000; // match the ESP32 publish interval
 
-    function timeAgo(dateStr) {
-        const seconds = Math.floor((new Date() - new Date(dateStr)) / 1000);
-        if (seconds < 60) return `${seconds}s ago`;
-        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-        return `${Math.floor(seconds / 3600)}h ago`;
+    const chartDefaults = {
+        type: 'line',
+        options: {
+            animation: false,
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: {
+                    ticks: { color: '#444', font: { size: 10 }, maxTicksLimit: 8 },
+                    grid:  { color: '#1a1a1a' }
+                },
+                y: {
+                    ticks: { color: '#444', font: { size: 10 } },
+                    grid:  { color: '#1a1a1a' }
+                }
+            }
+        }
+    };
+
+    function makeChart(id, label, color) {
+        return new Chart(document.getElementById(id), {
+            ...chartDefaults,
+            data: {
+                labels: [],
+                datasets: [{
+                    label,
+                    data: [],
+                    borderColor: color,
+                    backgroundColor: color + '18',
+                    borderWidth: 1.5,
+                    pointRadius: 2,
+                    tension: 0.3,
+                    fill: true
+                }]
+            }
+        });
     }
 
-    async function update() {
+    const charts = {
+        temp: makeChart('chart-temp', 'Temperature (°F)', '#4caf50'),
+        hum:  makeChart('chart-hum',  'Humidity (%)',     '#2196f3'),
+        soil: makeChart('chart-soil', 'Soil (raw)',       '#ff9800')
+    };
+
+    function timeAgo(dateStr) {
+        const s = Math.floor((new Date() - new Date(dateStr)) / 1000);
+        if (s < 60)   return `${s}s ago`;
+        if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+        return `${Math.floor(s / 3600)}h ago`;
+    }
+
+    function fmtTime(dateStr) {
+        const d = new Date(dateStr);
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function updateChart(chart, labels, values) {
+        chart.data.labels   = labels;
+        chart.data.datasets[0].data = values;
+        chart.update();
+    }
+
+    async function refresh() {
         try {
             const res = await fetch(
-                `${SUPABASE_URL}/rest/v1/sensor_readings?order=created_at.desc&limit=1`,
+                `${SUPABASE_URL}/rest/v1/sensor_readings?order=created_at.desc&limit=60`,
                 {
                     headers: {
-                        'apikey': SUPABASE_KEY,
+                        'apikey':        SUPABASE_KEY,
                         'Authorization': `Bearer ${SUPABASE_KEY}`
                     }
                 }
             );
 
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
-            if (!data.length) throw new Error('No data yet');
+            const rows = await res.json();
+            if (!rows.length) throw new Error('No data yet');
 
-            const row = data[0];
-            const t = timeAgo(row.created_at);
+            // Latest reading (rows[0] = most recent)
+            const latest = rows[0];
+            const ago    = timeAgo(latest.created_at);
 
-            document.getElementById('temp').innerHTML =
-                `${parseFloat(row.temperature).toFixed(1)}<span class="unit">&deg;F</span>`;
-            document.getElementById('temp-time').textContent = t;
+            document.getElementById('val-temp').innerHTML  =
+                `${parseFloat(latest.temperature).toFixed(1)}<span class="unit">&deg;F</span>`;
+            document.getElementById('val-hum').innerHTML   =
+                `${parseFloat(latest.humidity).toFixed(1)}<span class="unit">%</span>`;
+            document.getElementById('val-soil').innerHTML  =
+                `${parseInt(latest.soil_moisture)}<span class="unit">raw</span>`;
+            ['temp','hum','soil'].forEach(id =>
+                document.getElementById(`ts-${id}`).textContent = ago
+            );
 
-            const hVal = parseFloat(row.humidity).toFixed(1);
-            document.getElementById('humidity').innerHTML =
-                `${hVal}<span class="unit">%</span>`;
-            document.getElementById('humidity-bar').style.width = `${hVal}%`;
-            document.getElementById('humidity-time').textContent = t;
+            // Graphs — reverse so oldest is left
+            const sorted = [...rows].reverse();
+            const labels = sorted.map(r => fmtTime(r.created_at));
+            updateChart(charts.temp, labels, sorted.map(r => parseFloat(r.temperature)));
+            updateChart(charts.hum,  labels, sorted.map(r => parseFloat(r.humidity)));
+            updateChart(charts.soil, labels, sorted.map(r => parseInt(r.soil_moisture)));
 
-            const sVal = parseInt(row.soil_moisture);
-            const soilPct = Math.max(0, Math.min(100, Math.round((4095 - sVal) / 4095 * 100)));
-            document.getElementById('soil').innerHTML =
-                `${sVal}<span class="unit">raw</span>`;
-            document.getElementById('soil-bar').style.width = `${soilPct}%`;
-            document.getElementById('soil-time').textContent = t;
-
-            document.getElementById('status').textContent = `LIVE — refreshes every 10s`;
-            document.getElementById('status').className = 'status live';
+            const el = document.getElementById('status');
+            el.textContent = `LIVE — updated ${ago} — refreshes every 60s`;
+            el.className = 'status live';
 
         } catch (err) {
             console.error(err);
-            document.getElementById('status').textContent = `ERROR: ${err.message}`;
-            document.getElementById('status').className = 'status error';
+            const el = document.getElementById('status');
+            el.textContent = `ERROR: ${err.message}`;
+            el.className = 'status error';
         }
     }
 
-    update();
-    setInterval(update, 10000);
+    refresh();
+    setInterval(refresh, REFRESH_MS);
 </script>
 
 </body>
